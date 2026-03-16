@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <title>CondoSmart Full System</title>
+    <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;600&display=swap" rel="stylesheet">
+    <style>
+        :root { --primary: #c2410c; --danger: #dc2626; --success: #16a34a; --glass: rgba(255, 255, 255, 0.95); }
+        body { margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center; background: linear-gradient(rgba(0,0,0,0.5), rgba(0,0,0,0.5)), url('https://www.condonayoo.com/wp-content/uploads/2024/03/04af7c1b528890017899275a7f3865de.jpg') no-repeat center center fixed; background-size: cover; font-family: 'Kanit', sans-serif; }
+        .container { width: 95%; max-width: 480px; background: var(--glass); padding: 30px; border-radius: 30px; box-shadow: 0 20px 50px rgba(0,0,0,0.5); text-align: center; }
+        .section { display: none; } .active { display: block; }
+        .tab-btn { padding: 8px 12px; margin: 2px; border-radius: 8px; border: none; background: #64748b; color: white; cursor: pointer; font-size: 12px; }
+        .tab-btn.active-tab { background: var(--primary); }
+        input, button { width: 100%; padding: 12px; margin: 8px 0; border-radius: 12px; border: 1px solid #ddd; }
+        button { background: var(--primary); color: white; border: none; cursor: pointer; font-weight: 600; }
+        .card { background: white; padding: 15px; border-radius: 15px; margin: 10px 0; text-align: left; border: 1px solid #eee; }
+        .admin-box { background: #f8fafc; padding: 15px; border-radius: 15px; margin: 10px 0; text-align: left; font-size: 13px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div id="login-page" class="section active">
+        <h2>DCONDO KIRI</h2>
+        <input type="text" id="loginRoom" placeholder="เลขห้องพัก">
+        <input type="password" id="loginPass" placeholder="รหัสผ่าน">
+        <button onclick="handleLogin()">เข้าสู่ระบบ</button>
+        <p onclick="switchPage('reg-page')" style="cursor:pointer; color:blue;">สมัครสมาชิก</p>
+    </div>
+
+    <div id="reg-page" class="section">
+        <h3>สมัครสมาชิก</h3>
+        <input type="text" id="regName" placeholder="ชื่อ-นามสกุล">
+        <input type="text" id="regRoom" placeholder="เลขห้อง">
+        <input type="password" id="regPass" placeholder="รหัสผ่าน">
+        <button onclick="handleRegister()">บันทึกข้อมูล</button>
+        <button onclick="switchPage('login-page')" style="background:#64748b">กลับ</button>
+    </div>
+
+    <div id="dash-page" class="section">
+        <h3 id="user-head"></h3>
+        <div id="booking-status"></div>
+        <div id="tab-container" style="margin-bottom:15px;"></div>
+        <div id="fac-list"></div>
+        <button onclick="location.reload()" style="background:#64748b">ออกจากระบบ</button>
+    </div>
+
+    <div id="admin-page" class="section">
+        <h3>แผงควบคุมแอดมิน</h3>
+        <div class="admin-box" id="queue-list"><b>🔔 รายการจอง:</b></div>
+        <div class="admin-box" id="user-list"><b>👥 สมาชิกทั้งหมด:</b></div>
+        <button onclick="location.reload()" style="background:#64748b">ปิดหน้าต่าง</button>
+    </div>
+</div>
+
+<button style="position:fixed; bottom:20px; right:20px; width:auto;" onclick="adminAccess()">🔒 แอดมิน</button>
+
+<script>
+    const ADMIN_PASSWORD = "natkit1234";
+    let currentUser = null, activeTab = 1;
+    let facilities = JSON.parse(localStorage.getItem('fac_data')) || [
+        {id:1, name:"ฟิตเนส", cap:10, slots: {}}, 
+        {id:2, name:"สระว่ายน้ำ", cap:15, slots: {}}, 
+        {id:3, name:"ห้องสมุด", cap:8, slots: {}}
+    ];
+
+    function saveFac() { localStorage.setItem('fac_data', JSON.stringify(facilities)); }
+    function switchPage(id) { document.querySelectorAll('.section').forEach(s => s.classList.remove('active')); document.getElementById(id).classList.add('active'); }
+
+    function handleRegister() {
+        const room = document.getElementById('regRoom').value;
+        const u = { name: document.getElementById('regName').value, room: room, pass: document.getElementById('regPass').value, booking: null };
+        localStorage.setItem('user_' + room, JSON.stringify(u));
+        alert("สมัครสำเร็จ!"); switchPage('login-page');
+    }
+
+    function handleLogin() {
+        const u = JSON.parse(localStorage.getItem('user_' + document.getElementById('loginRoom').value));
+        if(!u || u.pass !== document.getElementById('loginPass').value) return alert("รหัสผิด");
+        currentUser = u; showDashboard();
+    }
+
+    function showDashboard() {
+        document.getElementById('user-head').innerText = "ยินดีต้อนรับ: " + currentUser.name;
+        const status = document.getElementById('booking-status');
+        if(currentUser.booking) {
+            let color = currentUser.booking.status === 'pending' ? 'orange' : currentUser.booking.status === 'rejected' ? 'red' : 'green';
+            let label = currentUser.booking.status === 'pending' ? '⏳ รอการอนุมัติ' : currentUser.booking.status === 'rejected' ? '❌ ไม่อนุมัติ' : '✅ อนุมัติแล้ว';
+            status.innerHTML = `<div class="card" style="border:2px solid ${color}">
+                <b>รายการ:</b> ${currentUser.booking.facName} (${currentUser.booking.time})<br>
+                <b>สถานะ:</b> ${label} <br>
+                <button onclick="cancelBooking()" style="background:var(--danger)">ยกเลิก/ปิดรายการ</button>
+            </div>`;
+            document.getElementById('tab-container').innerHTML = document.getElementById('fac-list').innerHTML = "";
+        } else {
+            renderFacList();
+        }
+        switchPage('dash-page');
+    }
+
+    function renderFacList() {
+        const tabCont = document.getElementById('tab-container');
+        const list = document.getElementById('fac-list');
+        tabCont.innerHTML = facilities.map(f => `<button class="tab-btn ${activeTab==f.id?'active-tab':''}" onclick="activeTab=${f.id}; renderFacList()">${f.name}</button>`).join('');
+        
+        let f = facilities.find(x => x.id == activeTab);
+        list.innerHTML = `<b>${f.name} (10:00 - 18:00):</b>`;
+        for(let h=10; h<19; h++) {
+            let time = h + ":00", count = f.slots[time] || 0;
+            list.innerHTML += `<div class="card">${time} (${count}/${f.cap}) ${count >= f.cap ? '<b style="color:red; float:right">เต็ม</b>' : `<button style="width:auto; float:right" onclick="reqBook('${f.name}', ${f.id}, '${time}')">จอง</button>`}</div>`;
+        }
+    }
+
+    function reqBook(name, id, time) {
+        currentUser.booking = { facName: name, facId: id, status: 'pending', time: time };
+        localStorage.setItem('user_' + currentUser.room, JSON.stringify(currentUser));
+        showDashboard();
+    }
+
+    function cancelBooking() {
+        if(currentUser.booking?.status === 'approved') {
+            let f = facilities.find(f => f.id === currentUser.booking.facId);
+            f.slots[currentUser.booking.time]--;
+            saveFac();
+        }
+        currentUser.booking = null;
+        localStorage.setItem('user_' + currentUser.room, JSON.stringify(currentUser));
+        location.reload();
+    }
+
+    function adminAccess() {
+        if(prompt("รหัสแอดมิน:") !== ADMIN_PASSWORD) return alert("รหัสผิด");
+        const qList = document.getElementById('queue-list'), uList = document.getElementById('user-list');
+        qList.innerHTML = "<b>🔔 รายการจอง:</b>"; uList.innerHTML = "<b>👥 สมาชิกทั้งหมด:</b>";
+        for(let i=0; i<localStorage.length; i++) {
+            let key = localStorage.key(i);
+            if(!key.startsWith('user_')) continue;
+            let u = JSON.parse(localStorage.getItem(key));
+            if(u.booking) {
+                let actionBtn = u.booking.status === 'pending' ? 
+                    `<button onclick="approve('${u.room}')" style="background:green">อนุมัติ</button><button onclick="reject('${u.room}')" style="background:orange">ไม่อนุมัติ</button>` :
+                    (u.booking.status === 'approved' ? `<span style="color:green; font-weight:bold;">✅ อนุมัติแล้ว</span>` : `<span style="color:red; font-weight:bold;">❌ ไม่อนุมัติ</span>`) +
+                    `<button onclick="adminCancel('${u.room}')" style="background:red">ยกเลิก/ลบ</button>`;
+                qList.innerHTML += `<div class="card">ห้อง ${u.room} : ${u.booking.facName} (${u.booking.time})<br>${actionBtn}</div>`;
+            }
+            uList.innerHTML += `<div style="display:flex; justify-content:space-between; padding:5px 0;">ห้อง ${u.room} <button onclick="delUser('${u.room}')" style="background:red; width:auto; padding:0 10px;">ลบ</button></div>`;
+        }
+        switchPage('admin-page');
+    }
+
+    function approve(room) {
+        let u = JSON.parse(localStorage.getItem('user_' + room));
+        let f = facilities.find(fac => fac.id === u.booking.facId);
+        f.slots[u.booking.time] = (f.slots[u.booking.time] || 0) + 1;
+        u.booking.status = 'approved';
+        saveFac(); localStorage.setItem('user_' + room, JSON.stringify(u));
+        adminAccess();
+    }
+
+    function reject(room) {
+        let u = JSON.parse(localStorage.getItem('user_' + room));
+        u.booking.status = 'rejected';
+        localStorage.setItem('user_' + room, JSON.stringify(u));
+        adminAccess();
+    }
+
+    function adminCancel(room) {
+        if(!confirm("ยืนยันการยกเลิก/ลบรายการนี้?")) return;
+        let u = JSON.parse(localStorage.getItem('user_' + room));
+        if(u.booking.status === 'approved') {
+            let f = facilities.find(f => f.id === u.booking.facId);
+            f.slots[u.booking.time]--;
+            saveFac();
+        }
+        u.booking = null; localStorage.setItem('user_' + room, JSON.stringify(u));
+        adminAccess();
+    }
+
+    function delUser(room) { localStorage.removeItem('user_' + room); adminAccess(); }
+</script>
+</body>
+</html>
